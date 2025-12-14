@@ -479,7 +479,8 @@ class AdminScanLogView(generics.ListAPIView):
         'student__university_id': ['exact'],
         'status': ['exact'],
         'bus_number': ['exact'],
-        'timestamp': ['date']
+        'timestamp': ['date'],
+        'direction': ['exact']
     }
 
     def get_queryset(self):
