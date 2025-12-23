@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import filters
-from .models import Parent, Student, AttendanceLog, StudentBusPass, BusPassRequest
+from .models import FCMToken, Parent, Student, AttendanceLog, StudentBusPass, BusPassRequest
 from .serializers import (
     ParentRegistrationSerializer,
     ParentProfileSerializer,
@@ -35,6 +35,9 @@ from datetime import datetime, time
 from .permissions import APIKeyCheck
 from .schedule_utils import get_student_schedule_by_id, get_all_schedules
 from django_filters.rest_framework import DjangoFilterBackend
+from firebase_admin import messaging
+from .models import FCMToken
+from django.core.mail import send_mail
 
 
 def set_auth_cookies(response, access_token, refresh_token=None):
@@ -377,12 +380,139 @@ class DemoStudentLoginView(APIView):
 class ScanLogView(APIView):
     permission_classes = [APIKeyCheck]
 
+    def _is_time_in_slot(self, scan_time, start_str, end_str, buffer_minutes=30):
+        try:
+            start_time = datetime.strptime(start_str, '%H:%M').time()
+            end_time = datetime.strptime(end_str, '%H:%M').time()
+
+            start_dt = datetime.combine(datetime.today(), start_time)
+            end_dt = datetime.combine(datetime.today(), end_time)
+            
+            valid_start = (start_dt - timedelta(minutes=buffer_minutes)).time()
+            valid_end = (end_dt + timedelta(minutes=buffer_minutes)).time()
+
+            return valid_start <= scan_time <= valid_end
+        except Exception:
+            return False
+
+    def _send_firebase_notification(self, student, log_entry):
+        try:
+            parents = student.parents.all()
+            if not parents.exists():
+                return
+
+            tokens_queryset = FCMToken.objects.filter(user__parent_profile__in=parents)
+            if not tokens_queryset.exists():
+                return
+            
+            registration_tokens = [t.token for t in tokens_queryset]
+
+            title = "Bus Activity Update"
+            body = f"{student.user.first_name} scanned {log_entry.direction} on {log_entry.bus_number}. Status: {log_entry.status}"
+
+            success_count = 0
+            
+            for token_str in registration_tokens:
+                try:
+                    message = messaging.Message(
+                        notification=messaging.Notification(
+                            title=title,
+                            body=body,
+                        ),
+                        android=messaging.AndroidConfig(
+                            priority='high',
+                            notification=messaging.AndroidNotification(
+                                channel_id='default',
+                                sound='default',
+                                default_sound=True,
+                            ),
+                        ),
+                        data={
+                            "student_id": str(student.university_id),
+                            "scan_id": str(log_entry.id),
+                            "status": log_entry.status,
+                        },
+                        token=token_str,
+                    )
+                    
+                    messaging.send(message)
+                    success_count += 1
+                    
+                except Exception as e:
+                    print(f"FCM Send Failed: {e}")
+                    if 'Requested entity was not found' in str(e) or 'registration-token-not-registered' in str(e):
+                        FCMToken.objects.filter(token=token_str).delete()
+
+        except Exception as e:
+            print(f"FCM General Error: {str(e)}")
+
+    def _send_email_notifications(self, student, log_entry):
+        print(f"DEBUG: Starting email notification for {student.university_id}")
+        try:
+            timestamp_str = log_entry.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            subject = f"Bus Scan: {student.user.first_name} {student.user.last_name} ({log_entry.status})"
+            
+            parents = student.parents.all()
+            parent_emails = [p.user.email for p in parents if p.user.email]
+            
+            if parent_emails:
+                message = (
+                    f"Student: {student.user.first_name} {student.user.last_name}\n"
+                    f"Time: {timestamp_str}\n"
+                    f"Bus: {log_entry.bus_number}\n"
+                    f"Direction: {log_entry.direction}\n"
+                    f"Status: {log_entry.status}\n\n"
+                    f"This is an automated notification from the Bus System."
+                )
+                
+                print(f"DEBUG: Sending Parent Email to {len(parent_emails)} recipients...")
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    parent_emails,
+                    fail_silently=False
+                )
+                print("EMAIL: Parent notification sent successfully.")
+            else:
+                print("DEBUG: No parent emails found for this student.")
+
+            if log_entry.status == 'INVALID':
+                admins = User.objects.filter(is_staff=True)
+                admin_emails = [a.email for a in admins if a.email]
+                
+                if admin_emails:
+                    admin_subject = f"ALERT: Invalid Scan for {student.university_id}"
+                    admin_message = (
+                        f"ALERT: INVALID SCAN DETECTED\n\n"
+                        f"Student ID: {student.university_id}\n"
+                        f"Name: {student.user.first_name} {student.user.last_name}\n"
+                        f"Status: {log_entry.status}\n"
+                        f"Bus: {log_entry.bus_number}\n"
+                        f"Time: {timestamp_str}\n\n"
+                        f"Please check the system logs for details."
+                    )
+                    
+                    print(f"DEBUG: Sending Admin Alert to {len(admin_emails)} admins...")
+                    send_mail(
+                        admin_subject,
+                        admin_message,
+                        settings.DEFAULT_FROM_EMAIL,
+                        admin_emails,
+                        fail_silently=False
+                    )
+                    print("EMAIL: Admin alert sent successfully.")
+                else:
+                    print("DEBUG: Scan was INVALID, but no Admin emails found to alert.")
+
+        except Exception as e:
+            print(f"EMAIL CRASH: {e}")
+
     @transaction.atomic
     def post(self, request, *args, **kwargs):
         student_rfid = request.data.get('student_rfid')
         bus_number = request.data.get('bus_number')
         scan_timestamp_str = request.data.get('scan_timestamp')
-        direction_input = request.data.get('direction', 'INBOUND').upper()
 
         if not all([student_rfid, scan_timestamp_str]):
             return Response({"error": "student_rfid and scan_timestamp are required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -399,9 +529,12 @@ class ScanLogView(APIView):
             return Response({"error": "Invalid timestamp (Clock Skew > 5 mins)."}, status=status.HTTP_400_BAD_REQUEST)
         
         direction_input = request.data.get('direction')
+        
         if not direction_input:
-            hour = scan_timestamp.hour
-            if hour < 12:
+            uae_tz = timezone.get_current_timezone()
+            scan_local = scan_timestamp.astimezone(uae_tz)
+            
+            if scan_local.hour < 12:
                 direction_input = 'INBOUND'
             else:
                 direction_input = 'OUTBOUND'
@@ -423,13 +556,18 @@ class ScanLogView(APIView):
         if active_pass:
             active_pass.used_at = scan_timestamp
             active_pass.save()
-            AttendanceLog.objects.create(
+
+            log = AttendanceLog.objects.create(
                 student=student,
                 timestamp=scan_timestamp,
                 bus_number=bus_number,
                 status=AttendanceLog.ScanStatus.OVERRIDE,
                 direction=direction_input
             )
+            
+            self._send_firebase_notification(student, log)
+            self._send_email_notifications(student, log)
+
             return Response({"status": "VALID", "reason": "Admin Pass Used"}, status=status.HTTP_200_OK)
 
         try:
@@ -440,27 +578,33 @@ class ScanLogView(APIView):
             return Response({"error": f"Could not validate schedule: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         scan_day_short = scan_timestamp.strftime("%a")[:2]
-        
         is_valid_schedule = (scan_day_short in valid_days_list)
 
         if is_valid_schedule:
-            AttendanceLog.objects.create(
+            log = AttendanceLog.objects.create(
                 student=student,
                 timestamp=scan_timestamp,
                 bus_number=bus_number,
-                direction=direction_input,
-                status=AttendanceLog.ScanStatus.VALID
+                status=AttendanceLog.ScanStatus.VALID,
+                direction=direction_input
             )
+            
+            self._send_firebase_notification(student, log)
+            self._send_email_notifications(student, log)
+            
             return Response({"status": "VALID", "reason": "Schedule Matched"}, status=status.HTTP_200_OK)
         else:
-            AttendanceLog.objects.create(
+            log = AttendanceLog.objects.create(
                 student=student,
                 timestamp=scan_timestamp,
                 bus_number=bus_number,
-                direction=direction_input,
                 status=AttendanceLog.ScanStatus.INVALID,
-                
+                direction=direction_input
             )
+            
+            self._send_firebase_notification(student, log)
+            self._send_email_notifications(student, log)
+            
             return Response({"status": "INVALID", "reason": "Not on Schedule"}, status=status.HTTP_403_FORBIDDEN)
 
 class CreateBusPassView(generics.CreateAPIView):
@@ -758,3 +902,32 @@ class AdminParentListView(generics.ListAPIView):
     
     filter_backends = [filters.SearchFilter]
     search_fields = ['user__email', 'user__first_name', 'user__last_name', 'phone_number']
+
+class UpdateFCMTokenView(APIView):
+    """
+    Endpoint for the Frontend to register a device for push notifications.
+    Frontend sends the token, Backend saves it linked to the user.
+    """
+    permission_classes = [IsAuthenticated] # User must be logged in
+
+    def post(self, request, *args, **kwargs):
+        fcm_token = request.data.get('fcm_token')
+        
+        if not fcm_token:
+            return Response({"error": "fcm_token is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Update existing or create new token record for this user
+        # We use update_or_create to ensure one token per device/user combo if needed,
+        # but here we simply ensure the token exists for the user.
+        # A simple approach is to delete if it exists elsewhere and create new.
+        
+        # 1. Clean up: If this token was assigned to another user, remove it
+        FCMToken.objects.filter(token=fcm_token).exclude(user=request.user).delete()
+        
+        # 2. Save the token for the current user
+        FCMToken.objects.get_or_create(
+            user=request.user,
+            token=fcm_token
+        )
+        
+        return Response({"message": "Device registered for notifications."}, status=status.HTTP_200_OK)

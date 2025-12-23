@@ -1,46 +1,37 @@
-# 'version' has been removed (as requested by the warning)
-
 services:
-  # 1. The PostgreSQL Database Service
   db:
     image: postgres:15
     environment:
-      # These now read from your .env file
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data/
-    
-    # --- THIS IS THE FIX ---
-    # This 'ports:' section is at the correct indentation,
-    # at the same level as 'volumes:' and 'environment:'.
     ports:
       - "5433:5432"
 
-  # 2. The Django Web Application Service
   web:
     build: .
     volumes:
-      # This mounts your local code into the container,
-      # so changes are reflected live (hot-reloading)
       - .:/app
     ports:
       - "8000:8000"
     environment:
-      # These also read from your .env file
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_HOST=db
-      
-      - BUS_API_KEY=${BUS_API_KEY}
-      - SECRET_KEY=${SECRET_KEY}
-      - DEBUG=${DEBUG}
-      
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+
+      BUS_API_KEY: ${BUS_API_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+      DEBUG: ${DEBUG}
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
     depends_on:
       - db
 
 volumes:
-  # This named volume persists your database data
   postgres_data:

@@ -5,3 +5,4 @@ django-cors-headers
 django-filter
 pandas
 psycopg2-binary
+firebase-admin

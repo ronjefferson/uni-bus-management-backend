@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ParentRegistrationView, ParentProfileView, DemoStudentLoginView, StudentProfileView, StudentScheduleView, ScanLogView, CreateBusPassView, AdminScanLogView, StudentScheduleReportView, ParentChildrenListView, LinkChildView, ParentChildLogView, CustomTokenObtainPairView, CustomTokenRefreshView, LogoutView, StudentAttendanceLogHistoryView, StudentParentListView, StudentPassRequestView, AdminPassRequestListView, AdminApprovePassView, AdminRejectPassView, AdminGetStudentInfo, AdminGetParentInfo, AdminStudentListView, AdminParentListView
+from .views import ParentRegistrationView, ParentProfileView, DemoStudentLoginView, StudentProfileView, StudentScheduleView, ScanLogView, CreateBusPassView, AdminScanLogView, StudentScheduleReportView, ParentChildrenListView, LinkChildView, ParentChildLogView, CustomTokenObtainPairView, CustomTokenRefreshView, LogoutView, StudentAttendanceLogHistoryView, StudentParentListView, StudentPassRequestView, AdminPassRequestListView, AdminApprovePassView, AdminRejectPassView, AdminGetStudentInfo, AdminGetParentInfo, AdminStudentListView, AdminParentListView, UpdateFCMTokenView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView, TokenRefreshView
 )
@@ -8,6 +8,7 @@ urlpatterns = [
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
     path('token/logout/', LogoutView.as_view(), name='token_logout'),
+    path('notifications/register-device/', UpdateFCMTokenView.as_view(), name='fcm-register-device'),
 
     path('parents/register/', ParentRegistrationView.as_view(), name='parent-register'),
     path('parents/me/', ParentProfileView.as_view(), name='parent-profile'),
