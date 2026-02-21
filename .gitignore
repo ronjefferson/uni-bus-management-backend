@@ -1,31 +1,135 @@
-# --- Secrets ---
-# This is the most important line.
-# It prevents your .env file with all your passwords
-# from EVER being uploaded to GitHub or shared.
+# --- SENSITIVE DATA & SECRETS ---
+# Environment variables with passwords, API keys, secrets
 .env
+.env.local
+.env.docker
+.env.*.local
 
-# --- Docker ---
-# Ignore the local Docker database volume
-postgres_data/
+# Firebase credentials (NEVER commit)
+firebase_credentials.json
+firebase_*.json
+
+# Database credentials if stored locally
+*.sql
+*.sql.gz
 
 # --- Django / Python ---
-# Bytecode and cache
+# Bytecode and compiled files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
 
-# Local database file (good practice to include,
-# even though you use Postgres)
-db.sqlite3
-db.sqlite3-journal
-
-# Environment
+# Virtual environments
 venv/
 env/
+ENV/
 .venv/
+env.bak/
+venv.bak/
+
+# Local database files
+db.sqlite3
+db.sqlite3-journal
+*.db
+
+# Python package manager
+*.pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Django
+*.log
+local_settings.py
+/staticfiles/
+/static/
+/media/
+
+# --- IDE & Editor ---
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+.vim/
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# --- Docker ---
+# Local Docker volumes
+postgres_data/
+db_data/
+.dockerignore
 
 # --- OS-specific ---
-# Mac
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
 
 # Windows
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.Trash-*
+
+# --- Project-specific ---
+# CSV files with sensitive student/parent data
+# Uncomment if these contain sensitive information:
+# students.csv
+# schedules.csv
+
+# Local development files
+*.seed
+*.pid
+
+# Node modules (if any frontend is added later)
+node_modules/
+npm-debug.log
+
+# OS temp files
+*.tmp
+*.bak
+*.backup
+
+# IDE run configurations
+.run/
