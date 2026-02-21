@@ -426,7 +426,7 @@ coverage report
 
 ## Troubleshooting
 
-### Firebase Connection Issues
+### Firebase Connection Issues (Optional / Not Currently Used)
 - Verify `firebase_credentials.json` is in the correct location
 - Check Firebase service account has Cloud Messaging enabled
 - Review Django logs for initialization messages
