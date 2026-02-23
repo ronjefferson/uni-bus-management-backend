@@ -32,7 +32,6 @@ A comprehensive Django REST API for managing university student transportation, 
 * [![Django REST Framework][DRF-badge]][DRF-url]
 * [![PostgreSQL][PostgreSQL-badge]][PostgreSQL-url]
 * [![JWT][JWT-badge]][JWT-url]
-* [![Firebase][Firebase-badge]][Firebase-url]
 * [![Pandas][Pandas-badge]][Pandas-url]
 * [![Docker][Docker-badge]][Docker-url]
 * [![Docker Compose][DockerCompose-badge]][DockerCompose-url]
